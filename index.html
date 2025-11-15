@@ -941,7 +941,7 @@ async function run(){
   myres.textContent=out.join("\n");
 
   // 4. 回測
-  const rows=backtest(all);
+  const rows = await backtest(all);
   renderHits(rows);
 
   // 5. 更新圖表
