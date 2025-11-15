@@ -154,13 +154,13 @@ input,textarea,select{
 
 <!-- 圖表 -->
 <div class="card">
-  <h3>📈 各號碼連莊折線圖（近期走勢）</h3>
-  <div id="chartStreak" class="chartBox"></div>
+  <h3>📈 連莊走勢圖（與前一期重複的號碼數）</h3>
+  <canvas id="streakChart" height="180"></canvas>
 </div>
 
 <div class="card">
-  <h3>📊 各號碼出現次數統計</h3>
-  <div id="chartCount" class="chartBox"></div>
+  <h3>📊 各號碼出現次數統計（1~39）</h3>
+  <canvas id="countChart" height="220"></canvas>
 </div>
 
 <!-- 回測 -->
