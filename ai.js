@@ -121,15 +121,18 @@ function createTFModel() {
 
 // 初始化模型
 async function initTFModel() {
-  if (!tfModel) {
+  if (tfModel) return;
+
+  try {
+    // ⭐ 載入你網站上的模型（正確路徑）
+    tfModel = await tf.loadLayersModel('./ai/model.json');
+    console.log("AI model loaded from /ai/model.json");
+  } 
+  catch (err) {
+    console.error("Failed to load model, fallback to empty model:", err);
+
+    // 若 model.json 找不到 → 建立空模型（保底）
     tfModel = createTFModel();
-    await tfModel.save('indexeddb://539_ai_model');
-  } else {
-    try {
-      tfModel = await tf.loadLayersModel('indexeddb://539_ai_model');
-    } catch (e) {
-      tfModel = createTFModel();
-    }
   }
 }
 
