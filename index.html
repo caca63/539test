@@ -746,14 +746,21 @@ const RAW_HISTORY = `
 // 把上面的 RAW_HISTORY 解析成 [[2,11,15,37,38], ...] 這種格式
 function parseRawHistory(raw) {
   const hist = [];
-  raw.split(/\n/).forEach(line => {
-    const m = line.match(/(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
+
+  // 只抓真正有「五碼」的行
+  const lines = raw.split(/\n/);
+
+  for (const line of lines) {
+    // 僅抓 5 個數字
+    const m = line.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
     if (m) {
-      hist.push(m.slice(1).map(Number)); // 只取 5 個號碼
+      hist.push(m.slice(1).map(Number));
     }
-  });
-  // 你的原始文字是「最新在最上面」，程式慣例是「最舊在前、最新在最後」
-  // 所以這裡反轉一下，讓 baseHistory[baseHistory.length-1] = 最新一期
+  }
+
+  // ★ 不要 reverse
+  // ★ 因為你的 RAW_HISTORY 順序本來就：最新 → 最舊
+  // ★ 我們要自己 reverse 一次 → 最舊在前、最新在後
   return hist.reverse();
 }
 
