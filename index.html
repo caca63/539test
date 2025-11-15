@@ -856,30 +856,33 @@ function renderTop10(list){
 }
 
 
-// ------------------ 回測 ----------------------
-function backtest(all){
+// ------------------ 回測（修正版） ----------------------
+async function backtest(all){
   const rows=[];
+  const streak = document.getElementById("streak").checked;
+  const avoid = document.getElementById("avoid").checked;
+
   for(let i=1;i<all.length-1;i++){
-    const train=all.slice(0,i+1);
-    const target=all[i+1];
+    const train = all.slice(0,i+1);
+    const target = all[i+1];
 
-    const probs=window.AI_finalProb(train);
+    // 🔥🔥 關鍵修正：要 await 才能得到 39 個機率
+    const probs = await window.AI_finalProb(train);
 
-    const last=train[train.length-1];
-    const streak=document.getElementById("streak").checked;
-    const avoid=document.getElementById("avoid").checked;
+    const last = train[train.length-1];
 
-    // 取 Top5
-    const top5=window.AI_localComputeTop5(probs,last,avoid,streak);
+    // Top5（本地運算版）
+    const top5 = window.AI_localComputeTop5(probs,last,avoid,streak);
 
-    let best=0;
-    const hitList=[];
+    let best = 0;
+    const hitList = [];
     for(const t of top5){
-      const hit=t.t.filter(x=>target.includes(x)).length;
-      if(hit>0) hitList.push({t:t.t,hit});
-      best=Math.max(best,hit);
+      const hit = t.t.filter(x=>target.includes(x)).length;
+      if(hit>0) hitList.push({t:t.t, hit});
+      best = Math.max(best, hit);
     }
-    rows.push({issue:i+1,target,best,hitList});
+
+    rows.push({issue:i+1, target, best, hitList});
   }
   return rows;
 }
