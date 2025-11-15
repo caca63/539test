@@ -2,8 +2,15 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>台灣 539 機率分析器 v1.0</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>台灣 539 AI 機率分析器 v3</title>
+
+<!-- ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
+
 <style>
 body{
   background:#0f172a;
@@ -40,33 +47,18 @@ input,textarea,select{
   border:1px solid rgba(148,163,184,.25);
   background:#020617;
   color:#e5e7eb;
-  box-sizing:border-box;
 }
 .row{
   display:flex;
   flex-wrap:wrap;
   gap:10px;
   align-items:center;
-  margin-top:4px;
 }
-.divider{
-  border-top:1px dashed rgba(148,163,184,.4);
-  margin:2px 0;
-}
-.mono{
-  white-space:pre-wrap;
-  font-family:ui-monospace,Consolas,monospace;
-}
-
 .split2{
   display:flex;
-  gap:8px;
+  gap:10px;
 }
-.split2>div{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-}
+.split2>div{flex:1;}
 
 .chip{
   background:#1e293b;
@@ -74,142 +66,142 @@ input,textarea,select{
   padding:6px 8px;
   font-size:13px;
   border:1px solid rgba(148,163,184,.35);
-  box-shadow:0 4px 10px rgba(15,23,42,.8);
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  margin-bottom:4px;
+  margin:4px 0;
 }
 .chip.rankTop{
   border-color:#38bdf8;
-  box-shadow:0 0 0 1px rgba(56,189,248,.4),0 10px 25px rgba(15,23,42,.9);
   background:radial-gradient(circle at top,#0ea5e944,#020617);
 }
-.chip span.label{color:#e5e7eb;}
-.chip span.value{font-weight:600;color:#7dd3fc;}
-/* 命中紀錄表 */
-.hit-table-wrapper{
-  max-height:260px;
-  overflow:auto;
-  border-radius:10px;
-  border:1px solid rgba(148,163,184,.4);
-  background:#020617;
-}
-.hit-table{
+.chartBox{
   width:100%;
-  border-collapse:collapse;
-  font-size:12px;
-  min-width:480px;
-}
-.hit-table th,
-.hit-table td{
-  padding:6px 8px;
-  border-bottom:1px solid rgba(30,64,175,.5);
-}
-.hit-table th{
-  color:#bfdbfe;
-  font-weight:600;
-}
-.hit-table tr:hover{
+  height:320px;
   background:#0b1120;
+  border-radius:12px;
+  margin-top:10px;
 }
 </style>
 </head>
+
 <body>
 
-<h1>台灣 539 中獎機率計算器</h1>
+<h1>台灣 539 AI 機率分析器 v3</h1>
 
-<div id="stats" style="color:#60a5fa;font-size:13px;margin-bottom:8px"></div>
+<div id="stats" style="margin-bottom:8px;color:#60a5fa"></div>
 
+<!-- r 衰減 + 設定 -->
 <div class="card">
   <label>衰減權重 r</label>
   <div class="row">
-    <input id="r" type="number" step="0.01" value="0.8" min="0" max="1" style="max-width:100px">
+    <input id="r" type="number" step="0.01" min="0" max="1" value="0.8" style="max-width:100px">
     <button class="btn sec" onclick="setR(0.6)">r=0.6</button>
     <button class="btn sec" onclick="setR(0.8)">r=0.8</button>
     <button class="btn sec" onclick="setR(0.95)">r=0.95</button>
   </div>
 
-  <div class="row" style="margin-top:8px">
-    <label class="switch"><input type="checkbox" id="streak" checked> 🔁 熱號連開懲罰</label>
-    <label class="switch"><input type="checkbox" id="avoid" checked> 避免重複上一期</label>
-  </div>
-
-  <label style="margin-top:8px">我的下注（五顆一組，每行一組）</label>
-  <textarea id="bets" placeholder="例如：1 2 13 24 35"></textarea>
-
   <div class="row">
-    <button class="btn" onclick="run()">計算中獎機率</button>
+    <label><input type="checkbox" id="streak" checked> 🔁 熱號連開懲罰</label>
+    <label><input type="checkbox" id="avoid" checked> 避免重複上一期</label>
+    <label><input type="checkbox" id="useAI" checked> 🤖 使用 AI（Markov + TensorFlow）</label>
   </div>
+</div>
 
-  <div class="divider"></div>
+<!-- 新增期數 -->
+<div class="card">
   <label>新增最新一期（五顆）</label>
   <input id="latest" placeholder="例如：3 11 22 27 38">
   <div class="row">
-    <button class="btn" onclick="appendLatest()">＋ 加入到歷史</button>
+    <button class="btn" onclick="appendLatest()">加入到歷史</button>
     <button class="btn sec" onclick="clearAdded()">重置本機新增</button>
   </div>
 </div>
 
+<!-- 單號 AI 機率（排序） -->
 <div class="card">
-  <h3>🔢 各號碼機率分佈（依權重排序）</h3>
-  <div style="font-size:12px;color:#9ca3af">單號平均理論值：約 12.82%</div>
-  <div id="singleTop" class="mono split2" style="margin-top:6px;">尚未計算</div>
-</div>
-
-<div class="card">
-  <h3>💡 推薦組合 Top10</h3>
-  <div style="font-size:12px;color:#9ca3af">理論機率：1 / C(39,5) ≈ 0.0001737%</div>
-  <div id="toplist" class="mono split2"></div>
-</div>
-
-<div class="card">
-  <h3>我的下注結果</h3>
-  <div id="myres" class="mono" style="font-size:13px;color:#94a3b8">尚未計算</div>
-</div>
-
-<div class="card">
-  <h3>📈 命中紀錄表（TopN 回測）</h3>
-  <div style="font-size:12px;color:#9ca3af">使用 Top5 回測</div>
-  <div id="hitSummary" style="font-size:12px;color:#9ca3af;margin-bottom:4px">尚未回測</div>
-  <div class="hit-table-wrapper">
-    <table class="hit-table" id="hitTable">
-      <thead>
-        <tr>
-          <th>期數</th><th>開獎號碼</th><th>最佳命中</th><th>命中組合</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <h3>🔢 單號 AI 機率（依權重排序）</h3>
+  <div id="singleTop" class="split2" style="margin-top:6px;font-size:13px;color:#9ca3af">
+    尚未計算
   </div>
 </div>
+
+<!-- Top10 -->
+<div class="card">
+  <h3>💡 推薦組合 Top10（AI + WebWorker）</h3>
+  <div id="toplist" class="split2"></div>
+
+  <div class="row" style="margin-top:10px">
+    <button class="btn" onclick="run()">🔥 計算 AI 預測</button>
+  </div>
+</div>
+
+<!-- 我的下注 -->
+<div class="card">
+  <h3>我的下注結果</h3>
+  <textarea id="bets" placeholder="例如：1 12 23 28 35"></textarea>
+  <div id="myres" style="white-space:pre-wrap;margin-top:10px;color:#94a3b8">尚未計算</div>
+</div>
+
+<!-- 圖表 -->
+<div class="card">
+  <h3>📈 各號碼連莊折線圖（近期走勢）</h3>
+  <div id="chartStreak" class="chartBox"></div>
+</div>
+
+<div class="card">
+  <h3>📊 各號碼出現次數統計</h3>
+  <div id="chartCount" class="chartBox"></div>
+</div>
+
+<!-- 回測 -->
+<div class="card">
+  <h3>📈 回測（Top5）</h3>
+  <div id="hitSummary" style="margin-bottom:8px;color:#94a3b8">尚未回測</div>
+  <table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <thead>
+      <tr style="color:#bfdbfe">
+        <th>期數</th><th>開獎</th><th>最佳</th><th>命中組合</th>
+      </tr>
+    </thead>
+    <tbody id="hitTable"></tbody>
+  </table>
+</div>
+
+<script src="issueDate.js"></script>
+<script src="fetchData.js"></script>
+<script src="ai.js"></script>
+<script src="charts.js"></script>
+
 <script>
-// --- 內建範例歷史（每期 5 顆） --- 🔵 改 539
-const baseHistory = [
+// ------------------ Data ----------------------
+const LS_KEY="extra539_v3";
+let added=JSON.parse(localStorage.getItem(LS_KEY)||"[]");
+
+// base history（會用 fetchData.js 自動覆蓋）
+let baseHistory=[
   [3,11,22,27,38],
   [5,9,12,19,33],
-  [7,11,20,25,36],
-  [2,4,17,28,31],
-  [1,14,21,29,34]
+  [7,11,20,25,36]
 ];
-const LS_KEY="extra539_v1";
-let added = JSON.parse(localStorage.getItem(LS_KEY)||"[]");
+
+function getAll(){ return baseHistory.concat(added); }
 
 function updateStats(){
-  const total = baseHistory.length + added.length;
-  const latest = (added.length? added[added.length-1]:baseHistory[baseHistory.length-1]).join(" ");
-  stats.innerHTML = `📊 共 ${total} 期，最新：${latest}`;
+  const all=getAll();
+  const latest=all[all.length-1]||[];
+  document.getElementById("stats").innerHTML=
+    `📊 歷史期數：${all.length}　最新：${latest.join(" ")}`;
 }
 updateStats();
 
 function appendLatest(){
-  const v = latest.value.trim().split(/\s+/).map(Number);
-  if(v.length===5 && v.every(n=>n>=1 && n<=39)){
+  const v=latest.value.trim().split(/\s+/).map(Number);
+  if(v.length===5 && v.every(n=>n>=1&&n<=39)){
     added.push(v);
     localStorage.setItem(LS_KEY,JSON.stringify(added));
-    latest.value="";
     updateStats();
-  }else alert("請輸入五個 1~39 的數字");
+    latest.value="";
+  }else alert("五顆 1~39");
 }
 function clearAdded(){
   if(confirm("清除本機新增？")){
@@ -219,178 +211,162 @@ function clearAdded(){
   }
 }
 function setR(v){document.getElementById("r").value=v;}
-function getAll(){return baseHistory.concat(added);}
 
-// --- 單號權重（含 r + 熱號懲罰） 🔵 改 39 顆 ---
-function singleProbsByR(hist,r,sp){
-  const w = Array(39).fill(0);
-  const n = hist.length;
-  for(let i=0;i<n;i++){
-    const ww=Math.pow(r,n-1-i);
-    for(const x of hist[i]) w[x-1]+=ww;
+
+// ------------------ WebWorker ----------------------
+const worker=new Worker("worker.js");
+let workerReady=false;
+
+worker.onmessage=function(e){
+  const msg=e.data;
+
+  if(msg.type==="ready"){
+    workerReady=true;
+    return;
   }
-
-  // 熱號連開懲罰 🔵 539 調整
-  if(sp){
-    for(let num=1;num<=39;num++){
-      let c=0, maxc=0;
-      for(let i=0;i<n;i++){
-        if(hist[i].includes(num)){c++;maxc=Math.max(maxc,c);}
-        else c=0;
-      }
-      if(maxc>=3) w[num-1]*=0.75;
-    }
+  if(msg.type==="top10"){
+    renderTop10(msg.data);
+    return;
   }
+};
 
-  const s = w.reduce((a,b)=>a+b,0)||1;
-  return w.map(v=>v/s);
-}
-// --- 產生所有 C(39,5) 組合（優化生成） ---
-function allCombos(){
-  const r=[];
-  for(let a=1;a<=35;a++)
-    for(let b=a+1;b<=36;b++)
-      for(let c=b+1;c<=37;c++)
-        for(let d=c+1;d<=38;d++)
-          for(let e=d+1;e<=39;e++)
-            r.push([a,b,c,d,e]);
-  return r;
-}
-
-// --- 五顆組合機率（乘積模型） ---
-function comboProb(p,t){
-  let s=1;
-  for(let x of t) s*=p[x-1];
-  return s;
-}
-
-// --- 推薦組合計算（含熱號 & 避免重複懲罰） ---
-function computeTopCombos(hist,probs,avoid){
-  const last = hist[hist.length-1];
-  const hotSet = new Set(last);
-  const tri = allCombos();
-  const scored=[];
-
-  for(const t of tri){
-    let sc = comboProb(probs,t);
-
-    // 熱號懲罰 🔵
-    const hotCount = t.filter(x=>hotSet.has(x)).length;
-    if(hotCount===1)sc*=0.95;
-    else if(hotCount===2)sc*=0.90;
-    else if(hotCount===3)sc*=0.80;
-    else if(hotCount===4)sc*=0.65;
-    else if(hotCount===5)sc*=0.55;
-
-    // 避免重複上一期 🔵
-    if(avoid){
-      const dup = t.filter(x=>last.includes(x)).length;
-      if(dup===1) sc*=0.90;
-      else if(dup===2) sc*=0.70;
-      else if(dup===3) sc*=0.45;
-      else if(dup===4) sc*=0.25;
-      else if(dup===5) sc*=0.10;
-    }
-
-    scored.push({t,sc});
+function computeTop10(probs,last,avoid,streak){
+  if(!workerReady){
+    alert("Worker 尚未載入完畢！");
+    return;
   }
-
-  scored.sort((a,b)=>b.sc-a.sc);
-  return scored.slice(0,10);
+  worker.postMessage({
+    type:"computeTop10",
+    probs,last,avoid,streak
+  });
 }
 
-// --- 單號排序顯示 ---
+
+// ------------------ 單號排序 ----------------------
 function updateSingleTop(probs){
-  const arr = probs.map((p,i)=>({num:i+1,p})).sort((a,b)=>b.p-a.p);
-  const left = arr.slice(0,20);
-  const right = arr.slice(20,39);
-  singleTop.innerHTML = `
-    <div>${left.map(o=>`<div class="chip"><span class="label">${o.num}</span><span class="value">${(o.p*100).toFixed(2)}%</span></div>`).join("")}</div>
-    <div>${right.map(o=>`<div class="chip"><span class="label">${o.num}</span><span class="value">${(o.p*100).toFixed(2)}%</span></div>`).join("")}</div>
+  const arr=probs.map((p,i)=>({num:i+1,p})).sort((a,b)=>b.p-a.p);
+
+  const left=arr.slice(0,20);
+  const right=arr.slice(20);
+
+  singleTop.innerHTML=`
+    <div>${left.map(o=>`<div class="chip"><span>${o.num}</span><span>${(o.p*100).toFixed(3)}%</span></div>`).join("")}</div>
+    <div>${right.map(o=>`<div class="chip"><span>${o.num}</span><span>${(o.p*100).toFixed(3)}%</span></div>`).join("")}</div>
   `;
 }
 
-// --- 回測（Top5） ---
-function backtest(hist,r,sp,avoid){
+
+// ------------------ Top10 ----------------------
+function renderTop10(list){
+  const left=list.slice(0,5);
+  const right=list.slice(5);
+
+  toplist.innerHTML=`
+    <div>${left.map((o,i)=>`
+      <div class="chip rankTop">
+        <span>Top${i+1}｜${o.t.join(" ")}</span>
+        <span>${(o.score*100).toFixed(6)}%</span>
+      </div>`).join("")}</div>
+
+    <div>${right.map((o,i)=>`
+      <div class="chip">
+        <span>Top${i+6}｜${o.t.join(" ")}</span>
+        <span>${(o.score*100).toFixed(6)}%</span>
+      </div>`).join("")}</div>
+  `;
+}
+
+
+// ------------------ 回測 ----------------------
+function backtest(all){
   const rows=[];
-  for(let i=1;i<hist.length-1;i++){
-    const train=hist.slice(0,i+1);
-    const target=hist[i+1];
-    const probs=singleProbsByR(train,r,sp);
-    const top=computeTopCombos(train,probs,avoid).slice(0,5);
+  for(let i=1;i<all.length-1;i++){
+    const train=all.slice(0,i+1);
+    const target=all[i+1];
 
-    let bestHit=0;
+    const probs=window.AI_finalProb(train);
+
+    const last=train[train.length-1];
+    const streak=document.getElementById("streak").checked;
+    const avoid=document.getElementById("avoid").checked;
+
+    // 取 Top5
+    const top5=window.AI_localComputeTop5(probs,last,avoid,streak);
+
+    let best=0;
     const hitList=[];
-    for(const it of top){
-      const hit=it.t.filter(x=>target.includes(x)).length;
-      if(hit>0) hitList.push({t:it.t,hit});
-      bestHit = Math.max(bestHit,hit);
+    for(const t of top5){
+      const hit=t.t.filter(x=>target.includes(x)).length;
+      if(hit>0) hitList.push({t:t.t,hit});
+      best=Math.max(best,hit);
     }
-
-    rows.push({issue:i+1,target,bestHit,hitList});
+    rows.push({issue:i+1,target,best,hitList});
   }
   return rows;
 }
 
-// --- 命中表渲染 ---
 function renderHits(rows){
-  let html="", c1=0,c2=0,c3=0,c4=0,c5=0;
-  for(const r of rows){
-    if(r.bestHit===1)c1++;
-    if(r.bestHit===2)c2++;
-    if(r.bestHit===3)c3++;
-    if(r.bestHit===4)c4++;
-    if(r.bestHit===5)c5++;
+  let html="";
+  let c1=0,c2=0,c3=0,c4=0,c5=0;
 
-    const comb = r.hitList.length? r.hitList.map(x=>x.t.join(" ")).join("、"):"—";
+  for(const r of rows){
+    if(r.best===1)c1++;
+    if(r.best===2)c2++;
+    if(r.best===3)c3++;
+    if(r.best===4)c4++;
+    if(r.best===5)c5++;
+
     html+=`
       <tr>
-        <td>第 ${r.issue} 期</td>
+        <td>${r.issue}</td>
         <td>${r.target.join(" ")}</td>
-        <td>${r.bestHit} 顆</td>
-        <td>${comb}</td>
+        <td>${r.best}</td>
+        <td>${r.hitList.map(x=>`${x.t.join(" ")}(${x.hit})`).join("、") || "-"}</td>
       </tr>`;
   }
-  document.querySelector("#hitTable tbody").innerHTML=html;
-  hitSummary.textContent = `至少中 1 顆：${c1+c2+c3+c4+c5} 期`;
+  hitTable.innerHTML=html;
+
+  hitSummary.innerHTML=
+    `至少中 1 顆：${c1+c2+c3+c4+c5} 期（含全中 ${c5} 期）`;
 }
 
-// --- 主程式 ---
-function run(){
-  const hist=getAll();
-  const r=parseFloat(document.getElementById("r").value)||0.8;
-  const sp=document.getElementById("streak").checked;
-  const avoid=document.getElementById("avoid").checked;
 
-  const probs=singleProbsByR(hist,r,sp);
+// ------------------ 主流程 ----------------------
+async function run(){
+  const all=getAll();
+
+  // 1. 計算單號 AI 機率
+  const probs=await AI_finalProb(all);
   updateSingleTop(probs);
 
-  const top10 = computeTopCombos(hist,probs,avoid);
-  toplist.innerHTML = `
-    <div>${top10.slice(0,5).map((o,i)=>`<div class="chip rankTop">
-      <span class="label">Top${i+1}｜${o.t.join(" ")}</span>
-      <span class="value">${(o.sc*100).toFixed(5)}%</span></div>`).join("")}</div>
-    <div>${top10.slice(5,10).map((o,i)=>`<div class="chip">
-      <span class="label">Top${i+6}｜${o.t.join(" ")}</span>
-      <span class="value">${(o.sc*100).toFixed(5)}%</span></div>`).join("")}</div>
-  `;
+  // 2. Worker 計算 Top10
+  computeTop10(
+    probs,
+    all[all.length-1],
+    document.getElementById("avoid").checked,
+    document.getElementById("streak").checked
+  );
 
-  // 我的下注
-  const bets=document.getElementById("bets").value.trim();
-  if(!bets){ myres.textContent="尚未輸入下注"; return; }
-  const lines=bets.split(/\n+/);
+  // 3. 我的下注
+  const betLines=bets.value.trim().split(/\n+/);
   const out=[];
-  for(const l of lines){
-    const t=l.trim().split(/\s+/).map(Number);
-    if(t.length!==5){ out.push(`${l} → 格式錯誤`); continue; }
-    const p=comboProb(probs,t);
-    out.push(`${l} → ${(p*100).toFixed(6)}%`);
+  for(const line of betLines){
+    const t=line.split(/\s+/).map(Number);
+    if(t.length!==5){out.push(`${line} → 格式錯誤`);continue;}
+    let s=1; t.forEach(n=>s*=probs[n-1]);
+    out.push(`${line} → ${(s*100).toFixed(6)}%`);
   }
   myres.textContent=out.join("\n");
 
-  const rows=backtest(hist,r,sp,avoid);
+  // 4. 回測
+  const rows=backtest(all);
   renderHits(rows);
+
+  // 5. 更新圖表
+  drawStreakChart(all);
+  drawCountChart(all);
 }
+
 </script>
 </body>
 </html>
