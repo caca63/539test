@@ -135,6 +135,16 @@ input,textarea,select{
   </div>
 </div>
 
+<div class="card">
+  <h3>🤖 產生 AI 模型（model.json + weights.bin）</h3>
+  <button class="btn" onclick="generateModelFiles()">
+    產生 AI 模型（Glorot 初始化）
+  </button>
+  <div style="font-size:12px;color:#94a3b8;margin-top:6px;">
+    按下後，瀏覽器會自動下載 model.json 與 weights.bin。
+  </div>
+</div>
+
 <!-- 我的下注 -->
 <div class="card">
   <h3>我的下注結果</h3>
@@ -367,6 +377,30 @@ async function run(){
   drawCountChart(all);
 }
 
+async function generateModelFiles() {
+  // 建構 C 型模型
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ units: 512, activation: "relu", inputShape: [39 * 20] }));
+  model.add(tf.layers.dense({ units: 256, activation: "relu" }));
+  model.add(tf.layers.dense({ units: 128, activation: "relu" }));
+  model.add(tf.layers.dense({ units: 64,  activation: "relu" }));
+  model.add(tf.layers.dense({ units: 39,  activation: "softmax" }));
+
+  model.compile({
+    optimizer: tf.train.adam(0.001),
+    loss: "categoricalCrossentropy"
+  });
+
+  // 讓權重初始化（重點！）
+  // 建一個假的輸入丟進去一次
+  const dummy = tf.zeros([1, 39 * 20]);
+  model.predict(dummy);
+
+  // 存到本機 → 會自動下載 model.json + weights.bin
+  await model.save("downloads://539-ai-model");
+
+  alert("🎉 AI 模型已產生！請查看下載的 model.json 與 weights.bin");
+}
 </script>
 </body>
 </html>
