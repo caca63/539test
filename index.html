@@ -913,65 +913,91 @@ function renderHits(rows){
 }
 
 
-// ------------------ 主流程 ----------------------
+// ------------------ 主流程（最佳版） ----------------------
 async function run(){
-  const all=getAll();
-
-  // 1. 計算單號 AI 機率
-  const probs=await AI_finalProb(all);
-  updateSingleTop(probs);
-
-  // 2. Worker 計算 Top10
-  computeTop10(
-    probs,
-    all[all.length-1],
-    document.getElementById("avoid").checked,
-    document.getElementById("streak").checked
-  );
-
-  // 3. 我的下注
-  const betLines=bets.value.trim().split(/\n+/);
-  const out=[];
-  for(const line of betLines){
-    const t=line.split(/\s+/).map(Number);
-    if(t.length!==5){out.push(`${line} → 格式錯誤`);continue;}
-    let s=1; t.forEach(n=>s*=probs[n-1]);
-    out.push(`${line} → ${(s*100).toFixed(6)}%`);
+  const all = getAll();
+  if (!all || !all.length){
+    alert("歷史資料為空，請先確認 RAW_HISTORY 是否正確。");
+    return;
   }
-  myres.textContent=out.join("\n");
 
-  // 4. 回測
-  const rows = await backtest(all);
-  renderHits(rows);
+  // 嘗試抓按鈕來做 Loading 狀態（如果沒抓到也沒關係）
+  const btn = document.querySelector('button[onclick="run()"]');
+  const oldBtnText = btn ? btn.textContent : "";
+  if (btn){
+    btn.disabled = true;
+    btn.textContent = "計算中...";
+  }
 
-  // 5. 更新圖表
-  drawStreakChart(all);
-  drawCountChart(all);
-}
+  // 顯示計算中狀態
+  singleTop.innerHTML = `<div>計算中，請稍候...</div>`;
+  toplist.innerHTML   = `<div>計算中...</div>`;
+  myres.textContent   = `計算中...`;
+  hitSummary.textContent = `回測計算中...`;
+  hitTable.innerHTML  = "";
 
-async function generateModelFiles() {
-  // 建構 C 型模型
-  const model = tf.sequential();
-  model.add(tf.layers.dense({ units: 512, activation: "relu", inputShape: [39 * 20] }));
-  model.add(tf.layers.dense({ units: 256, activation: "relu" }));
-  model.add(tf.layers.dense({ units: 128, activation: "relu" }));
-  model.add(tf.layers.dense({ units: 64,  activation: "relu" }));
-  model.add(tf.layers.dense({ units: 39,  activation: "softmax" }));
+  try{
+    // 1️⃣ 單號 AI 機率（全歷史）
+    const probs = await AI_finalProb(all);
+    if (!Array.isArray(probs) || probs.length !== 39){
+      console.error("AI_finalProb 回傳格式不正確：", probs);
+      alert("AI 機率計算結果異常，請檢查 console。");
+      return;
+    }
+    updateSingleTop(probs);
 
-  model.compile({
-    optimizer: tf.train.adam(0.001),
-    loss: "categoricalCrossentropy"
-  });
+    // 2️⃣ Worker 計算 Top10（用最後一期當「上一期」）
+    const lastDraw = all[all.length-1];
+    computeTop10(
+      probs,
+      lastDraw,
+      document.getElementById("avoid").checked,
+      document.getElementById("streak").checked
+    );
 
-  // 讓權重初始化（重點！）
-  // 建一個假的輸入丟進去一次
-  const dummy = tf.zeros([1, 39 * 20]);
-  model.predict(dummy);
+    // 3️⃣ 我的下注機率
+    const betText = bets.value.trim();
+    if (!betText){
+      myres.textContent = "尚未輸入下注。";
+    }else{
+      const lines = betText.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+      const out = [];
 
-  // 存到本機 → 會自動下載 model.json + weights.bin
-  await model.save("downloads://539-ai-model");
+      for (const line of lines){
+        const t = line.split(/\s+/).map(Number).filter(n=>!isNaN(n));
+        if (t.length !== 5){
+          out.push(`${line} → 格式錯誤（需要 5 個 1~39 的整數）`);
+          continue;
+        }
+        if (!t.every(n => n>=1 && n<=39)){
+          out.push(`${line} → 超出範圍（必須是 1~39）`);
+          continue;
+        }
+        let s = 1;
+        t.forEach(n => { s *= probs[n-1]; });
+        out.push(`${t.join(" ")} → ${(s*100).toFixed(6)}%`);
+      }
+      myres.textContent = out.join("\n");
+    }
 
-  alert("🎉 AI 模型已產生！請查看下載的 model.json 與 weights.bin");
+    // 4️⃣ 回測（Top5）
+    const rows = await backtest(all);   // ← 這裡一定要 await
+    renderHits(rows);
+
+    // 5️⃣ 更新圖表
+    drawStreakChart(all);
+    drawCountChart(all);
+
+  }catch(err){
+    console.error(err);
+    alert("執行時發生錯誤，請開 F12 → Console 查看詳細錯誤訊息。");
+  }finally{
+    // 還原按鈕狀態
+    if (btn){
+      btn.disabled = false;
+      btn.textContent = oldBtnText || "🔥 計算 AI 預測";
+    }
+  }
 }
 </script>
 </body>
